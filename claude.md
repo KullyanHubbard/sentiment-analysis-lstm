@@ -13,3 +13,7 @@
 - TensorFlow/Keras
 - Python 3.12
 - CPU (Ubuntu)
+
+## Instruksi Otomatis
+- Setiap update notebook, jalankan otomatis dengan: jupyter nbconvert --to notebook --execute kurs_rupiah.ipynb --output kurs_rupiah.ipynb
+- Install dependencies yang kurang otomatis dengan pip

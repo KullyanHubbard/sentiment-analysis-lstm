@@ -1,0 +1,70 @@
+============================
+  HASIL RUN: 20260522_162800
+============================
+
+[Data]
+  Sumber         : Yahoo Finance (USDIDR=X)
+  Rentang        : 2001-06-28 s.d. 2026-05-22
+  Total baris    : 6285
+  Close terakhir : 17,700.00 IDR  (2026-05-22)
+
+[Model]
+  Arsitektur     : LSTM(64) → Dropout(0.2) → LSTM(32) → Dropout(0.2) → Dense(1)
+  Window         : 60 hari
+  Split          : 80% train / 20% test
+  Epochs run     : 16
+  Train Loss     : 0.000691
+  Val Loss       : 0.000302
+
+[Evaluasi Test Set (single-step)]
+  MAE            : 54.84 IDR
+  RMSE           : 86.32 IDR
+
+[Backtest 30 Hari (multi-step kumulatif)]
+  MAE            : 227.47 IDR
+  RMSE           : 280.63 IDR
+  MAPE           : 1.30%
+  Akurasi        : 98.70%
+
+[Prediksi 30 Hari ke Depan]
+  Est. Akurasi   : 98.70%
+   Tanggal  Prediksi Kurs (IDR)
+2026-05-25                17716
+2026-05-26                17725
+2026-05-27                17731
+2026-05-28                17737
+2026-05-29                17743
+2026-06-01                17748
+2026-06-02                17753
+2026-06-03                17758
+2026-06-04                17763
+2026-06-05                17767
+2026-06-08                17771
+2026-06-09                17776
+2026-06-10                17780
+2026-06-11                17784
+2026-06-12                17788
+2026-06-15                17793
+2026-06-16                17797
+2026-06-17                17801
+2026-06-18                17805
+2026-06-19                17809
+2026-06-22                17813
+2026-06-23                17818
+2026-06-24                17822
+2026-06-25                17826
+2026-06-26                17830
+2026-06-29                17834
+2026-06-30                17838
+2026-07-01                17842
+2026-07-02                17847
+2026-07-03                17851
+
+[File Output]
+  20260522_162800_historis_kurs_usdidr.png
+  20260522_162800_loss_training.png
+  20260522_162800_prediksi_vs_aktual_testset.png
+  20260522_162800_backtest_30hari.png
+  20260522_162800_prediksi_30hari_ke_depan.png
+  20260522_162800_tabel_prediksi_30hari.csv
+  20260522_162800_summary.txt
