@@ -8,17 +8,20 @@
 - Total rows: ~6288+ (bertambah seiring waktu)
 - Kolom yang dipakai: Close (+ High, Low untuk hl_range)
 - Note: flatten multi-level columns dengan df.columns = df.columns.droplevel(1)
+- Cleaning: tick rusak yfinance (nilai 0 / spike <60% atau >200% median lokal 15-hari) → NaN → ffill/bfill
 
 ## Fitur Input (20 total)
 ### Teknikal (9)
 - close_diff, return, hl_range, rsi_14, ema_7_dev, ema_21_dev, rolling_std_7, dow, month
 
-### Fundamental (11) — semua di-shift(1) hindari lookahead
-- dxy_return, dxy_lag1 (DXY via yfinance DX-Y.NYB)
-- vix_return, vix_lag1 (VIX via yfinance ^VIX)
-- brent_return (Brent crude via yfinance BZ=F)
-- ihsg_return (IHSG via yfinance ^JKSE)
-- bi_rate, fed_rate, us_cpi, id_cpi, rate_spread (via FRED public CSV, tanpa API key)
+### Fundamental (11) — semua di-shift hindari lookahead
+- dxy_ret_t1 (DXY via yfinance DX-Y.NYB; return t-1)
+- vix_ret_t1 (VIX via yfinance ^VIX; return t-1)
+- brent_ret_t1 (Brent crude via yfinance BZ=F)
+- ihsg_ret_t1 (IHSG via yfinance ^JKSE)
+- tnx_ret_t1 (US 10Y Treasury Yield via yfinance ^TNX)
+- cpo_ret_t1 (CPO/Palm Oil via yfinance KCE=F)
+- bi_rate, fed_rate, us_cpi, id_cpi, rate_spread (via FRED public CSV, tanpa API key; shift 30 hari)
 
 ## Stack
 - TensorFlow/Keras
@@ -31,8 +34,6 @@
 Input(WINDOW=30, N_FEATURES=20)
 → LSTM(64, dropout=0.2, recurrent_dropout=0.3, l2=1e-4, return_sequences=True)
 → Dropout(0.3)
-→ MultiHeadAttention(num_heads=2, key_dim=32, dropout=0.1)
-→ LayerNormalization (dengan residual Add)
 → LSTM(32, dropout=0.2, recurrent_dropout=0.3, l2=1e-4)
 → Dropout(0.3)
 → Dense(HORIZON=7)
@@ -49,10 +50,15 @@ Input(WINDOW=30, N_FEATURES=20)
 - **No data leakage**: scaler di-`fit` HANYA pada baris training (`feat[:split+WINDOW]`), lalu `transform` semua
 - Walk-Forward rigor: scaler di-**refit per fold** pada `feat[:train_end+WINDOW]` — tidak ada future data masuk scaler
 
+## Catatan Kinerja (penting untuk presentasi)
+- Theil's U ≈ 1.0 → model ≈ naive random walk; MAE/MAPE kecil BUKAN bukti keunggulan, melainkan konsekuensi sifat kurs.
+- Directional accuracy ~50–55% (walk-forward bisa <50%), marginal di atas acak & bervariasi antar-run.
+- Nilai guna: kuantifikasi error & rentang ketidakpastian (MC Dropout), bukan sinyal trading. Summary.txt memuat catatan kejujuran ini.
+
 ## Pipeline Cell-by-Cell
 | Cell | Isi |
 |------|-----|
-| 1 | Setup, import, download USDIDR=X + DXY/VIX/Brent/IHSG/FRED, merge fitur fundamental |
+| 1 | Setup, import, download USDIDR=X (+ bersihkan tick rusak) + DXY/VIX/Brent/IHSG/TNX/CPO/FRED, merge fitur fundamental |
 | 2 | Plot historis kurs USD/IDR |
 | 3 | Feature engineering 20 fitur; hitung `split`; fit **MaxAbsScaler** pada train-only; buat `features_scaled`, `target_scaled`, `inverse_close_diff()` |
 | 4 | Buat sequences (`X`/`y` scaled, `X_raw`/`y_raw` mentah); Walk-Forward Validation dengan **scaler refit per fold**; tentukan `X_train/X_test/y_train/y_test` |
@@ -60,8 +66,7 @@ Input(WINDOW=30, N_FEATURES=20)
 | 6 | Evaluasi test set — MAE/RMSE per hari horizon |
 | 6b | Metrik profesional: MAPE, Directional Accuracy, Theil's U per horizon |
 | 7 | Backtest 7 hari terakhir (direct) + proyeksi 7 hari ke depan (MC Dropout 500x, CI 5%-95%) |
-| 7b | Interpretasi CI berwarna per confidence level (Tinggi/Sedang/Rendah) |
-| 8 | Simpan summary.txt + tabel_proyeksi_*.csv; daftar 10 file output |
+| 8 | Simpan summary.txt (+ metrik pro & walk-forward & catatan kejujuran) + tabel_proyeksi_*.csv; daftar 9 file output |
 
 ## Output per Run (folder Result/YYYYMMDD_HHMMSS/)
 1. `_historis_kurs_usdidr.png`
@@ -71,9 +76,8 @@ Input(WINDOW=30, N_FEATURES=20)
 5. `_metrics_professional.png`
 6. `_backtest_7hari.png`
 7. `_proyeksi_7hari_ke_depan.png`
-8. `_proyeksi_ci_enhanced.png`
-9. `_tabel_proyeksi_7hari.csv`
-10. `_summary.txt`
+8. `_tabel_proyeksi_7hari.csv`
+9. `_summary.txt`
 
 ## Konstanta Global
 | Variabel | Nilai | Keterangan |
