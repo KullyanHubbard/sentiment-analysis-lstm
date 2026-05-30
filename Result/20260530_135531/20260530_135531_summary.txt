@@ -1,0 +1,89 @@
+============================
+  HASIL RUN: 20260530_135531
+============================
+
+[Data]
+  Sumber         : Yahoo Finance (USDIDR=X)
+  Rentang        : 2001-06-28 s.d. 2026-05-29
+  Total baris    : 6290
+  Close terakhir : 17,878.00 IDR  (2026-05-29)
+
+[Fitur Input (22)]
+  close_diff, return, hl_range, rsi_14, ema_7_dev, ema_21_dev, rolling_std_7, dow, month, dxy_ret_t1, dxy_ret_t2, vix_ret_t1, vix_ret_t2, brent_ret_t1, ihsg_ret_t1, tnx_ret_t1, cpo_ret_t1, bi_rate, fed_rate, us_cpi, id_cpi, rate_spread
+
+[Model]
+  Arsitektur     : LSTM(64,d=0.2,rd=0.3,l2) → Dropout(0.3) → MHA(2h,k=32)+LN → LSTM(32,d=0.2,rd=0.3,l2) → Dropout(0.3) → Dense(7)
+  Loss           : MSE + 0.3 × directional penalty
+  Strategi       : Direct multi-output (7 hari sekaligus, bukan autoregressive)
+  Window         : 30 hari
+  Skip warmup    : 30 hari
+  Split          : 80% train / 20% test
+  Epochs run     : 100
+  Train Loss     : 0.001168
+  Val Loss       : 0.000328
+
+[Test Set — MAE per Hari Horizon]
+  Day +1: MAE =   54.72 IDR  |  RMSE =   91.76 IDR
+  Day +2: MAE =   70.49 IDR  |  RMSE =  107.50 IDR
+  Day +3: MAE =   81.09 IDR  |  RMSE =  118.50 IDR
+  Day +4: MAE =   91.63 IDR  |  RMSE =  130.10 IDR
+  Day +5: MAE =  101.34 IDR  |  RMSE =  140.27 IDR
+  Day +6: MAE =  109.85 IDR  |  RMSE =  150.91 IDR
+  Day +7: MAE =  117.78 IDR  |  RMSE =  159.34 IDR
+  Rata-rata: MAE = 89.56 IDR  |  RMSE = 128.34 IDR
+
+[Backtest Multi-Window (10 × 7 Hari = 70 Hari Terakhir)]
+  Window  1 (2026-05-21 s.d. 2026-05-29): MAE=  72.75 IDR  DirAcc=57.1%  (4/7)
+  Window  2 (2026-05-12 s.d. 2026-05-20): MAE= 219.09 IDR  DirAcc=100.0%  (7/7)
+  Window  3 (2026-05-01 s.d. 2026-05-11): MAE=  34.08 IDR  DirAcc=28.6%  (2/7)
+  Window  4 (2026-04-22 s.d. 2026-04-30): MAE= 117.14 IDR  DirAcc=57.1%  (4/7)
+  Window  5 (2026-04-13 s.d. 2026-04-21): MAE=  55.55 IDR  DirAcc=42.9%  (3/7)
+  Window  6 (2026-04-02 s.d. 2026-04-10): MAE=  62.24 IDR  DirAcc=57.1%  (4/7)
+  Window  7 (2026-03-24 s.d. 2026-04-01): MAE=  78.24 IDR  DirAcc=57.1%  (4/7)
+  Window  8 (2026-03-13 s.d. 2026-03-23): MAE=  71.45 IDR  DirAcc=71.4%  (5/7)
+  Window  9 (2026-03-04 s.d. 2026-03-12): MAE=  27.99 IDR  DirAcc=42.9%  (3/7)
+  Window 10 (2026-02-23 s.d. 2026-03-03): MAE=  85.87 IDR  DirAcc=28.6%  (2/7)
+  Mean MAE     : 82.44 IDR  (±54.32)
+  Mean Dir Acc : 54.3%  (> 50% ✓)
+
+[Proyeksi 7 Hari ke Depan — MC Dropout 500x, CI 5%-95%]
+   Tanggal  Proyeksi Kurs (IDR)  CI 5% (IDR)  CI 95% (IDR)  Std (IDR)
+2026-06-01                17879        17870         17888          5
+2026-06-02                17879        17863         17895          9
+2026-06-03                17879        17861         17896         10
+2026-06-04                17880        17860         17898         11
+2026-06-05                17880        17856         17905         14
+2026-06-08                17881        17854         17907         16
+2026-06-09                17882        17850         17910         18
+
+[Kesimpulan]
+  Model LSTM direct multi-output dengan 22 fitur input
+  (close_diff, return, hl_range, rsi_14, ema_7_dev, ema_21_dev, rolling_std_7, dow, month, dxy_ret_t1, dxy_ret_t2, vix_ret_t1, vix_ret_t2, brent_ret_t1, ihsg_ret_t1, tnx_ret_t1, cpo_ret_t1, bi_rate, fed_rate, us_cpi, id_cpi, rate_spread)
+  memprediksi 7 hari sekaligus, bukan autoregressive,
+  sehingga error tidak terakumulasi antar hari.
+  Loss training menggabungkan MSE dan penalty arah (alpha=0.3)
+  untuk memaksa model belajar arah pergerakan.
+  Backtest multi-window (10 × 7 hari): mean Dir Acc = 54.3%.
+  Confidence interval dihitung via Monte Carlo Dropout (500 samples)
+  dengan dropout aktif pada input, recurrent, dan hidden state LSTM.
+
+[Keterbatasan Model]
+  - Menggunakan 22 fitur teknikal & fundamental; tidak dapat memprediksi
+    kejadian luar biasa (FOMC surprise, krisis geopolitik, intervensi BI mendadak)
+  - Proyeksi ini BUKAN rekomendasi finansial
+  - Model cenderung mengikuti tren historis (kurs naik jangka panjang)
+  - MC Dropout CI mencerminkan ketidakpastian MODEL, bukan ketidakpastian PASAR
+    (ketidakpastian pasar nyata bisa jauh lebih besar)
+  - Akurasi menurun signifikan jika terjadi peristiwa ekonomi tak terduga
+
+[File Output]
+  20260530_135531_historis_kurs_usdidr.png
+  20260530_135531_walkforward.png
+  20260530_135531_loss_training.png
+  20260530_135531_prediksi_vs_aktual_testset.png
+  20260530_135531_metrics_professional.png
+  20260530_135531_backtest_7hari.png
+  20260530_135531_proyeksi_7hari_ke_depan.png
+  20260530_135531_proyeksi_ci_enhanced.png
+  20260530_135531_tabel_proyeksi_7hari.csv
+  20260530_135531_summary.txt
