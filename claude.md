@@ -10,17 +10,16 @@
 - Note: flatten multi-level columns dengan df.columns = df.columns.droplevel(1)
 - Cleaning: tick rusak yfinance (nilai 0 / spike <60% atau >200% median lokal 15-hari) → NaN → ffill/bfill
 
-## Fitur Input (20 total)
+## Fitur Input (19 total)
 ### Teknikal (9)
 - close_diff, return, hl_range, rsi_14, ema_7_dev, ema_21_dev, rolling_std_7, dow, month
 
-### Fundamental (11) — semua di-shift hindari lookahead
+### Fundamental (10) — semua di-shift hindari lookahead
 - dxy_ret_t1 (DXY via yfinance DX-Y.NYB; return t-1)
 - vix_ret_t1 (VIX via yfinance ^VIX; return t-1)
 - brent_ret_t1 (Brent crude via yfinance BZ=F)
 - ihsg_ret_t1 (IHSG via yfinance ^JKSE)
 - tnx_ret_t1 (US 10Y Treasury Yield via yfinance ^TNX)
-- cpo_ret_t1 (CPO/Palm Oil via yfinance KCE=F)
 - bi_rate, fed_rate, us_cpi, id_cpi, rate_spread (via FRED public CSV, tanpa API key; shift 30 hari)
 
 ## Stack
@@ -31,7 +30,7 @@
 
 ## Arsitektur Model
 ```
-Input(WINDOW=30, N_FEATURES=20)
+Input(WINDOW=30, N_FEATURES=19)
 → LSTM(64, dropout=0.2, recurrent_dropout=0.3, l2=1e-4, return_sequences=True)
 → Dropout(0.3)
 → LSTM(32, dropout=0.2, recurrent_dropout=0.3, l2=1e-4)

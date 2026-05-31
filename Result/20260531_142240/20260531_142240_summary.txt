@@ -1,0 +1,107 @@
+============================
+  HASIL RUN: 20260531_142240
+============================
+
+[Data]
+  Sumber         : Yahoo Finance (USDIDR=X)
+  Rentang        : 2001-06-28 s.d. 2026-05-29
+  Total baris    : 6290
+  Close terakhir : 17,878.00 IDR  (2026-05-29)
+
+[Fitur Input (19)]
+  close_diff, return, hl_range, rsi_14, ema_7_dev, ema_21_dev, rolling_std_7, dow, month, dxy_ret_t1, vix_ret_t1, brent_ret_t1, ihsg_ret_t1, tnx_ret_t1, bi_rate, fed_rate, us_cpi, id_cpi, rate_spread
+
+[Model]
+  Arsitektur     : LSTM(64,d=0.2,rd=0.3,l2) → Dropout(0.3) → LSTM(32,d=0.2,rd=0.3,l2) → Dropout(0.3) → Dense(7)
+  Loss           : MSE + 0.3 × directional penalty
+  Strategi       : Direct multi-output (7 hari sekaligus, bukan autoregressive)
+  Window         : 30 hari
+  Skip warmup    : 30 hari
+  Split          : 80% train / 20% test
+  Epochs run     : 90
+  Train Loss     : 0.003067
+  Val Loss       : 0.003677
+  Model evaluasi : model 80% (test set + backtest, out-of-sample)
+  Model proyeksi : model_prod 100% (refit seluruh data; khusus proyeksi masa depan)
+
+[Test Set — MAE per Hari Horizon]
+  Day +1: MAE =   54.79 IDR  |  RMSE =   91.79 IDR
+  Day +2: MAE =   70.63 IDR  |  RMSE =  107.57 IDR
+  Day +3: MAE =   81.20 IDR  |  RMSE =  118.57 IDR
+  Day +4: MAE =   91.89 IDR  |  RMSE =  130.28 IDR
+  Day +5: MAE =  101.77 IDR  |  RMSE =  140.53 IDR
+  Day +6: MAE =  110.44 IDR  |  RMSE =  151.29 IDR
+  Day +7: MAE =  118.57 IDR  |  RMSE =  159.80 IDR
+  Rata-rata: MAE = 89.90 IDR  |  RMSE = 128.54 IDR
+
+[Metrik Profesional - Test Set]
+  MAPE rata-rata      : 0.575%
+  Directional Acc     : 53.5%  (acuan acak 50%)
+  Theil's U rata-rata : 0.9998  (Lebih baik dari naive ✓)
+
+[Walk-Forward Validation (21 fold, scaler refit per fold)]
+  Mean MAE        : 102.16 IDR  (std 40.89)
+  Mean Dir Acc    : 49.7%  (acuan acak 50%)
+
+[Backtest Multi-Window (10 × 7 Hari = 70 Hari Terakhir)]
+  Window  1 (2026-05-21 s.d. 2026-05-29): MAE=  72.71 IDR  DirAcc=57.1%  (4/7)
+  Window  2 (2026-05-12 s.d. 2026-05-20): MAE= 221.31 IDR  DirAcc=85.7%  (6/7)
+  Window  3 (2026-05-01 s.d. 2026-05-11): MAE=  33.84 IDR  DirAcc=42.9%  (3/7)
+  Window  4 (2026-04-22 s.d. 2026-04-30): MAE= 119.13 IDR  DirAcc=71.4%  (5/7)
+  Window  5 (2026-04-13 s.d. 2026-04-21): MAE=  57.55 IDR  DirAcc=57.1%  (4/7)
+  Window  6 (2026-04-02 s.d. 2026-04-10): MAE=  63.87 IDR  DirAcc=71.4%  (5/7)
+  Window  7 (2026-03-24 s.d. 2026-04-01): MAE=  77.30 IDR  DirAcc=42.9%  (3/7)
+  Window  8 (2026-03-13 s.d. 2026-03-23): MAE=  73.20 IDR  DirAcc=85.7%  (6/7)
+  Window  9 (2026-03-04 s.d. 2026-03-12): MAE=  28.92 IDR  DirAcc=57.1%  (4/7)
+  Window 10 (2026-02-23 s.d. 2026-03-03): MAE=  84.28 IDR  DirAcc=42.9%  (3/7)
+  Mean MAE     : 83.21 IDR  (±54.80)
+  Mean Dir Acc : 61.4%  (> 50% ✓)
+
+[Proyeksi 7 Hari ke Depan — MC Dropout 500x, CI 5%-95%]
+   Tanggal  Proyeksi Kurs (IDR)  CI 5% (IDR)  CI 95% (IDR)  Std (IDR)
+2026-06-01                17878        17690         18065      113.9
+2026-06-02                17878        17613         18142      161.0
+2026-06-03                17878        17553         18202      197.2
+2026-06-04                17878        17503         18252      227.7
+2026-06-05                17878        17459         18296      254.6
+2026-06-08                17878        17419         18336      278.9
+2026-06-09                17878        17382         18373      301.2
+
+[Kesimpulan]
+  Model LSTM direct multi-output dengan 19 fitur input
+  memprediksi 7 hari sekaligus (bukan autoregressive),
+  sehingga error tidak terakumulasi antar hari.
+
+  CATATAN KEJUJURAN METODOLOGIS:
+  - Theil's U rata-rata = 1.000 (~1.0): secara statistik akurasi nilai
+    model SETARA dengan tebakan naif 'harga besok = harga terakhir'. MAE/MAPE kecil
+    adalah konsekuensi sifat kurs yang mendekati random walk, bukan bukti keunggulan.
+  - Directional accuracy ~50-55% (test 53.5%, walk-forward 49.7%,
+    backtest 61.4%): hanya marginal di atas acak (50%) dan bervariasi antar
+    window/run; model belum terbukti andal menebak arah.
+  - Nilai guna utama: kuantifikasi error & rentang ketidakpastian, bukan sinyal trading.
+  Confidence interval = ketidakpastian MODEL (MC Dropout 500x, σ_model)
+  + ketidakpastian PASAR (volatilitas close_diff historis diakumulasi √h, σ_pasar);
+  σ_total = √(σ_model² + σ_pasar²), CI 90% (z=1.645). Band melebar ~√h (random walk).
+
+[Keterbatasan Model]
+  - Menggunakan 19 fitur teknikal & fundamental; tidak dapat memprediksi
+    kejadian luar biasa (FOMC surprise, krisis geopolitik, intervensi BI mendadak)
+  - Proyeksi ini BUKAN rekomendasi finansial
+  - Model cenderung mengikuti tren historis (kurs naik jangka panjang)
+  - CI menggabungkan ketidakpastian MODEL (MC Dropout) dan PASAR (volatilitas historis × √h).
+    Asumsi: σ konstan (≈ volatilitas 252 hari terakhir) & distribusi normal.
+    Volatilitas nyata bisa time-varying (clustering) & ekor lebih gemuk,
+    sehingga CI dapat under-estimate ketidakpastian saat pasar sedang bergejolak.
+  - Akurasi menurun signifikan jika terjadi peristiwa ekonomi tak terduga
+
+[File Output]
+  20260531_142240_historis_kurs_usdidr.png
+  20260531_142240_walkforward.png
+  20260531_142240_loss_training.png
+  20260531_142240_prediksi_vs_aktual_testset.png
+  20260531_142240_metrics_professional.png
+  20260531_142240_backtest_7hari.png
+  20260531_142240_proyeksi_7hari_ke_depan.png
+  20260531_142240_tabel_proyeksi_7hari.csv
+  20260531_142240_summary.txt
