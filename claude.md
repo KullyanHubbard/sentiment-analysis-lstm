@@ -50,10 +50,54 @@ Input(WINDOW=30, N_FEATURES=20)
 - **No data leakage**: scaler di-`fit` HANYA pada baris training (`feat[:split+WINDOW]`), lalu `transform` semua
 - Walk-Forward rigor: scaler di-**refit per fold** pada `feat[:train_end+WINDOW]` — tidak ada future data masuk scaler
 
+## Proyeksi & Confidence Interval — Aturan Teori (WAJIB BENAR)
+
+Target model = `close_diff`. Rekonstruksi: `harga = last_price + cumsum(inverse(diff))`.
+
+### Yang BENAR secara teori (random walk with drift)
+- Point forecast: `E[P_{t+h}] = P_t + h·μ`
+- Variance: `Var(P_{t+h}) = h·σ²` → **ketidakpastian tumbuh ∝ √h**
+- Prediction interval: `P_t + h·μ ± z·σ·√h`
+
+### Aturan keras
+1. **CI WAJIB melebar ~√h.** CI hari +7 harus ~√7 ≈ 2.6× lebih lebar dari hari +1. CI flat/konstan antar-hari = SALAH secara matematis. (Ini cacat di versi lama: MC Dropout saja menghasilkan band ~1 IDR yang tidak melebar.)
+2. **MC Dropout ≠ ketidakpastian pasar.** MC Dropout hanya menangkap ketidakpastian MODEL. Ketidakpastian PASAR ditambah dari volatilitas `close_diff` historis yang diakumulasi √h. Gabung: `σ_total = sqrt(σ_mc² + σ_market²)`.
+3. **JANGAN bulatkan Std/CI ke `int`** kalau nilai kecil — `astype(int)` bikin Std tampil `0` padahal sebenarnya bukan nol. Pakai `round(1)` untuk kolom Std.
+4. **Mean proyeksi yang FLAT itu WAJAR**, bukan bug — konsekuensi random walk dengan drift ≈ 0. JANGAN paksa garis "bergerak" dengan drift artifisial yang tidak teruji. Kalau user mau drift, pakai `μ = mean(close_diff)` historis DAN tandai bahwa estimasi drift kurs itu noisy/tidak stabil antar-periode.
+
+### Blok proyeksi yang benar (Cell 7)
+```python
+mc_preds_diff   = inverse_close_diff(mc_preds_scaled).reshape(MC_SAMPLES, HORIZON)
+mc_preds_prices = last_price + np.cumsum(mc_preds_diff, axis=1)
+future_mean     = mc_preds_prices.mean(axis=0)
+
+# Ketidakpastian PASAR: volatilitas close_diff 1 tahun terakhir, akumulasi √h
+sigma_daily  = float(np.std(close_diff[-252:]))
+h            = np.arange(1, HORIZON + 1)
+sigma_market = sigma_daily * np.sqrt(h)
+
+# Gabung model (MC) + pasar; CI 90% → z=1.645
+sigma_mc    = mc_preds_prices.std(axis=0)
+sigma_total = np.sqrt(sigma_mc**2 + sigma_market**2)
+future_p05  = future_mean - 1.645 * sigma_total
+future_p95  = future_mean + 1.645 * sigma_total
+future_std  = sigma_total   # JANGAN astype(int); pred_df pakai round(1)
+```
+
+## Roadmap Upgrade Teoretis (HANYA kalau user minta — tanya dulu)
+Urut dari dampak teoretis terbesar:
+1. **GARCH/EGARCH (`arch` lib) untuk σ time-varying** — upgrade terbesar. Yang benar-benar predictable di kurs adalah volatilitas (volatility clustering), bukan arah. Ganti `σ` konstan di blok CI dengan σ kondisional GARCH → CI mengembang/menyempit ikut kondisi pasar.
+2. **Drift term eksplisit** (random walk with drift) bila mean ingin bergerak — tandai sebagai noisy.
+3. **Uji stasioneritas (ADF test)** sebelum differencing — formalitas yang saat ini hilang. `close_diff` sudah benar membuat series stasioner, tapi teori menuntut konfirmasi.
+
+### JANGAN dikejar
+Jangan habiskan effort agar LSTM "mengalahkan" random walk pada point forecast — melawan Meese-Rogoff, hampir pasti overfit/gagal. Peran realistis LSTM di sini: kuantifikasi error & interval, bukan sinyal arah.
+
 ## Catatan Kinerja (penting untuk presentasi)
 - Theil's U ≈ 1.0 → model ≈ naive random walk; MAE/MAPE kecil BUKAN bukti keunggulan, melainkan konsekuensi sifat kurs.
+- Dasar teori: **Meese-Rogoff (1983)** — untuk nilai tukar jangka pendek, model struktural/ML tidak konsisten mengalahkan random walk pada *point forecast*. Hasil Theil's U ≈ 1.0 = konfirmasi empiris, BUKAN kegagalan.
 - Directional accuracy ~50–55% (walk-forward bisa <50%), marginal di atas acak & bervariasi antar-run.
-- Nilai guna: kuantifikasi error & rentang ketidakpastian (MC Dropout), bukan sinyal trading. Summary.txt memuat catatan kejujuran ini.
+- Nilai guna: kuantifikasi error & rentang ketidakpastian (MC Dropout + volatilitas pasar), bukan sinyal trading. Summary.txt memuat catatan kejujuran ini.
 
 ## Pipeline Cell-by-Cell
 | Cell | Isi |
@@ -93,3 +137,10 @@ Input(WINDOW=30, N_FEATURES=20)
 - Setelah selesai update cell, beritahu user bahwa kode siap di-Run All — jangan dieksekusi.
 - Install dependencies yang kurang otomatis dengan pip (ini boleh, hanya eksekusi notebook yang dilarang).
 - Untuk perubahan terkait ML (scaling, loss, split, validasi): jelaskan teori yang benar dulu, lalu **tanya user** sebelum menerapkan.
+
+## Guardrail Anti-Bug (pelanggaran = bug serius)
+- **`model` vs `model_prod`**: `model` (80% train) HANYA untuk evaluasi test set & backtest (out-of-sample). `model_prod` (100% data) HANYA untuk proyeksi masa depan. JANGAN pakai `model_prod` untuk backtest — 70 hari backtest ada di dalam data fit-nya, jadi bukan out-of-sample.
+- **Anti-leakage**: scaler fit train-only; fitur fundamental tetap di-`shift()`. Jangan ubah.
+- **CI**: pertahankan aturan √h (lihat bagian Proyeksi & CI). Jangan kembalikan ke CI flat atau `astype(int)` pada Std.
+- **Indexing** `data_raw[SKIP + ... + WINDOW - 1]` untuk rekonstruksi harga itu rawan off-by-one. Jangan ubah tanpa menelusuri alignment-nya dulu.
+- **Reproducibility**: `tf.random.set_seed(42)` sebelum tiap training. Jangan hapus.
